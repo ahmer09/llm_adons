@@ -21,7 +21,6 @@ from rag.dataloader import DataLoader
 
 # load api key
 load_dotenv()
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
 file_path = "./data/"
 loaders = [
