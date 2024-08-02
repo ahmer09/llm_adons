@@ -2,19 +2,28 @@ import tqdm, nest_asyncio
 from langchain_community.document_loaders import WebBaseLoader
 from ragas import RunConfig
 from ragas.testset.generator import TestsetGenerator
-from ragas.evaluation import simple, reasoning, multi_context
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from ragas.testset.evolutions import simple, reasoning, multi_context
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings, AzureOpenAIEmbeddings
 from datasets import Dataset
 from ragas import evaluate
 from ragas.metrics import context_precision, context_recall
 
+web_loader = WebBaseLoader(
+    [
+        "https://peps.python.org/pep-0483/",
+        "https://peps.python.org/pep-0008/",
+        "https://peps.python.org/pep-0257/",
+    ]
+)
+
+pages = web_loader.load()
 
 RUN_CONFIG = RunConfig()
 
 # generate questions with openai models
 generator_llm = ChatOpenAI(model="gpt-3.5-turbo-16k")
 critic_llm = ChatOpenAI(model="gpt-4")
-embeddings = OpenAIEmbeddings()
+embeddings = AzureOpenAIEmbeddings()
 
 generator = TestsetGenerator.from_langchain(generator_llm, critic_llm, embeddings)
 
@@ -30,7 +39,7 @@ nest_asyncio.apply()
 tqdm.get_lock().locks = []
 
 QUESTIONS = testset.questions.to_list()
-GROUND_TRUTH = testset.ground_truth.to_list()
+GROUND_TRUTH = testset.ground_truth.to_list() ## llm answers is compared with ground_truth
 
 def perform_evaluation(docs, retriever):
     """
@@ -50,7 +59,7 @@ def perform_evaluation(docs, retriever):
     print(f"Getting contexts for evaluation set")
     for question in tqdm(QUESTIONS):
         eval_data["contexts"].append(
-            [doc.page_content for doc in retriever.similarity_search(question, k=3)]
+            [doc.page_content for doc in retriever.similarity_search(question, k=1)]
         )
     # RAGAS expects a Dataset object
     dataset = Dataset.from_dict(eval_data)
