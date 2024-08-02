@@ -7,28 +7,27 @@ from dataloader import DataLoader
 from langchain_community.document_loaders import TextLoader
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_core.documents import Document
+
 storage_path = "../vectordb"
 
-chroma_client = chromadb.HttpClient(host=)
+chroma_client = chromadb.PersistentClient(storage_path)
+collection = "test"
+chroma_vector_search_index_name="vector_index"
 embedding_function = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
 
-
-collection = chroma_client.create_collection(name="test")
-
-file_path = "../data/whatiworkedon.txt"
-
-
-loader = PyPDFLoader("/data/phoenix.pdf")
-pages = loader.load_and_split()
-
-text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-chunked_documents = text_splitter.split_documents(pages)
-
-Chroma.from_documents(
-    documents=chunked_documents,
+def create_vector_store(docs):
+    """
+    creates chroma vector store
+    :param docs: list of documents
+    :return: chroma vector store
+    """
+    vector_store = Chroma.from_documents(
+    documents=docs,
     embedding=embedding_function,
     collection_name="test",
     client=chroma_client,
 )
-print(f"Added {len(chunked_documents)} chunks to chroma db")
+    print(f"Added {len(docs)} chunks to chroma db")
+
+    return vector_store
 
