@@ -1,19 +1,20 @@
-from langchain_community.document_loaders import WebBaseLoader
-
+import chromadb
+from langchain_chroma import Chroma
+from datasets import load_dataset
+from tqdm import tqdm
 from rag.chunking import fixed_token_split
 from rag.ingestion import create_vector_store
+#from rag.ragas_evaluate import perform_evaluation
+from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
+from langchain_core.documents.base import Document
+
 from rag.ragas_evaluate import perform_evaluation
 
 if __name__ == '__main__':
 
-    web_loader = WebBaseLoader(
-        [
-            "https://peps.python.org/pep-0483/",
-            "https://peps.python.org/pep-0008/",
-            "https://peps.python.org/pep-0257/",
-        ]
-    )
-    docs = web_loader.load()
+    loader = DirectoryLoader("../data/", glob="*.pdf", loader_cls=PyPDFLoader)
+    docs = loader.load()
+    print('.....document_loaded.....')
 
     for chunk_size in [100, 200, 500, 1000]:
         chunk_overlap = int(0.15*chunk_size)
