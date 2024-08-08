@@ -1,12 +1,9 @@
-import json
 import os
-
 import chromadb
 import nest_asyncio
 from datasets import Dataset
-import openai
-from datasets import load_dataset
 from dotenv import load_dotenv
+from langchain_community.embeddings import SentenceTransformerEmbeddings
 from ragas.testset import TestsetGenerator
 from ragas.testset.evolutions import simple, reasoning, multi_context
 from ragas import RunConfig
@@ -15,7 +12,6 @@ from tqdm import tqdm
 
 from langchain_openai.chat_models import AzureChatOpenAI
 from langchain_openai.embeddings import AzureOpenAIEmbeddings
-from langchain.docstore.document import Document as LangchainDocument
 from ragas import evaluate
 
 load_dotenv()
@@ -64,6 +60,8 @@ azure_embeddings = AzureOpenAIEmbeddings(
     model=EMBEDDING_MODEL,
     allowed_special={'<|endoftext|>'}
 )
+
+embedding_function = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
 
 def perform_evaluation(docs, retriever):
     """

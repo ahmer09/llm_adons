@@ -7,6 +7,7 @@ from langchain.text_splitter import TokenTextSplitter
 
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain_openai.embeddings import OpenAIEmbeddings
+from langchain.text_splitter import Language, RecursiveCharacterTextSplitter
 
 # load api key
 load_dotenv()
@@ -50,3 +51,25 @@ def semantic_split(docs):
     )
     return splitter.split_documents(docs)
 
+def recursive_split(docs, chunk_size: int, chunk_overlap: int):
+    """
+    Recursive chunking
+
+    Args:
+        docs (List[Document]): List of documents to chunk
+        chunk_size (int): Chunk size (number of tokens)
+        chunk_overlap (int): Token overlap between chunks
+        language (Optional[Language], optional): Programming language enum. Defaults to None.
+
+    Returns:
+        List[Document]: List of chunked documents
+    """
+    separators = ["\n\n", "\n", " ", ""]
+
+    splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+        encoding_name="cl100k_base",
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        separators=separators,
+    )
+    return splitter.split_documents(docs)
