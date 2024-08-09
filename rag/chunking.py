@@ -11,17 +11,6 @@ from langchain.text_splitter import Language, RecursiveCharacterTextSplitter
 
 # load api key
 load_dotenv()
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-
-web_loader = WebBaseLoader(
-    [
-        "https://peps.python.org/pep-0483/",
-        "https://peps.python.org/pep-0008/",
-        "https://peps.python.org/pep-0257/",
-    ]
-)
-
-pages = web_loader.load()
 
 def fixed_token_split(docs, chunk_size, chunk_overlap):
     """
