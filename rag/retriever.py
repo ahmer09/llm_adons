@@ -1,6 +1,8 @@
 from langchain_chroma import Chroma
 from langchain.retrievers.contextual_compression import ContextualCompressionRetriever
 from langchain_cohere import CohereRerank
+from langchain.retrievers.multi_query import MultiQueryRetriever
+from langchain.retrievers import BM25Retriever, EnsembleRetriever
 import os
 
 
@@ -59,3 +61,52 @@ def contextualCompressionRetriever(db_storage_path, embedding_function, k=3):
     )
 
     return compression_retriever
+
+
+def multiQueryRetriever(db_storage_path, embedding_function, llm):
+    """
+    Multi Query Retriever
+    Args:
+        @param db_storage_path: path to where the vectordb is saved in disk
+        @param embedding_function: choice of embedding function used
+        @param llm: choice of llm model used
+    Returns:
+        MultiQueryRetriever: object of multi query retriever
+    """
+    vectorstore = Chroma(
+        embedding_function=embedding_function,
+        persist_directory=db_storage_path
+    )
+    multi_query_retriever = MultiQueryRetriever.from_llm(
+        retriever=vectorstore.as_retriever(), 
+        llm=llm
+    )
+    
+    return multi_query_retriever
+
+
+def ensembleRetriever(documents, db_storage_path, embedding_function):
+    """
+    Ensemble Retriever
+    Args:
+        @param documents: input document which was loaded using documents loader
+        @param db_storage_path: path to where the vectordb is saved in disk
+        @param embedding_function: choice of embedding function used
+    Returns:
+        EnsembleRetriever: object of multi query retriever
+    """
+    bm25_retriever = BM25Retriever.from_documents(documents)
+    bm25_retriever.k = 2
+
+    vectorstore = Chroma(
+        embedding_function=embedding_function,
+        persist_directory=db_storage_path
+    )
+    retriever = vectorstore.as_retriever()
+
+    ensemble_retriever = EnsembleRetriever(
+        retrievers=[bm25_retriever, retriever], 
+        weights=[0.5, 0.5]
+    )
+    
+    return ensemble_retriever
