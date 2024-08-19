@@ -48,17 +48,17 @@ def recursive_split(docs, chunk_size: int, chunk_overlap: int):
         docs (List[Document]): List of documents to chunk
         chunk_size (int): Chunk size (number of tokens)
         chunk_overlap (int): Token overlap between chunks
-        language (Optional[Language], optional): Programming language enum. Defaults to None.
 
     Returns:
         List[Document]: List of chunked documents
     """
     separators = ["\n\n", "\n", " ", ""]
 
-    splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
-        encoding_name="cl100k_base",
+    splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
-        separators=separators,
+        length_function=len,
+        add_start_index=True
+
     )
     return splitter.split_documents(docs)

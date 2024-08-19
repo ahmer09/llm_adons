@@ -35,10 +35,10 @@ def create_vector_store(docs):
     :param docs: list of documents
     :return: chroma vector store
     """
+
     vector_store = Chroma.from_documents(
         documents=docs,
         embedding=embedding_function,
-        collection_name="test",
         client=chroma_client,
     )
     print(f"Added {len(docs)} chunks to chroma db")
