@@ -1,9 +1,12 @@
 import os
 import uuid
 import chromadb
+import faiss
 from langchain_chroma import Chroma
 from langchain_community.embeddings import SentenceTransformerEmbeddings
+from langchain_community.vectorstores import FAISS
 from langchain_openai.embeddings import AzureOpenAIEmbeddings
+from langchain_community.docstore.in_memory import InMemoryDocstore
 
 storage_path = "../vectordb"
 
@@ -29,7 +32,7 @@ embedding_function = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2"
 #)
 
 
-def create_vector_store(docs):
+def create_chroma_vector_store(docs):
     """
     creates chroma vector store
     :param docs: list of documents
@@ -42,5 +45,23 @@ def create_vector_store(docs):
         client=chroma_client,
     )
     print(f"Added {len(docs)} chunks to chroma db")
+
+    return vector_store
+
+def create_faiss_vector_store(docs, embeddings):
+    """
+    creates faiss vector store
+    :param docs: list of documents
+    :return: faiss vector store
+    """
+
+    index = faiss.IndexFlatL2(len(embeddings.embed_query(docs)))
+
+    vector_store = FAISS.from_documents(
+        documents=docs,
+        embedding=embeddings,
+        index=index
+    )
+    print(f"Added {len(docs)} chunks to faiss db")
 
     return vector_store

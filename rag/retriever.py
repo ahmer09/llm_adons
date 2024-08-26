@@ -3,6 +3,7 @@ from langchain.retrievers.contextual_compression import ContextualCompressionRet
 from langchain_cohere import CohereRerank
 from langchain.retrievers.multi_query import MultiQueryRetriever
 from langchain.retrievers import BM25Retriever, EnsembleRetriever
+from langchain.retrievers.weaviate_hybrid_search import WeaviateHybridSearchRetriever
 import os
 
 
@@ -49,15 +50,10 @@ def contextualCompressionRetriever(db_storage_path, embedding_function, k=3):
         model="rerank-english-v3.0"
     )
     
-    naive_retriever = naiveRetriever(
-        db_storage_path=db_storage_path, 
-        embedding_function=embedding_function, 
-        k=k+5
-    )
-    
+
     compression_retriever = ContextualCompressionRetriever(
         base_compressor=compressor, 
-        base_retriever=naive_retriever
+        base_retriever=ensembleRetriever
     )
 
     return compression_retriever
@@ -85,7 +81,7 @@ def multiQueryRetriever(db_storage_path, embedding_function, llm):
     return multi_query_retriever
 
 
-def ensembleRetriever(documents, db_storage_path, embedding_function):
+def ensembleRetriever(documents, db_storage_path, embedding_function, vectorstore):
     """
     Ensemble Retriever
     Args:
@@ -96,12 +92,12 @@ def ensembleRetriever(documents, db_storage_path, embedding_function):
         EnsembleRetriever: object of multi query retriever
     """
     bm25_retriever = BM25Retriever.from_documents(documents)
-    bm25_retriever.k = 2
+    bm25_retriever.k = 5
 
-    vectorstore = Chroma(
-        embedding_function=embedding_function,
-        persist_directory=db_storage_path
-    )
+    #vectorstore = Chroma(
+    #    embedding_function=embedding_function,
+    #    persist_directory=db_storage_path
+    #)
     retriever = vectorstore.as_retriever()
 
     ensemble_retriever = EnsembleRetriever(

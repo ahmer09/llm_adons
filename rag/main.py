@@ -1,7 +1,8 @@
 import os
+import time
 from pathlib import Path
 import streamlit as st
-from llama_index.core import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from werkzeug.utils import secure_filename
 import chromadb
 from langchain_chroma import Chroma
@@ -12,12 +13,14 @@ from langchain_openai.embeddings import AzureOpenAIEmbeddings
 from langchain_openai.chat_models import AzureChatOpenAI
 from tqdm import tqdm
 from chunking import fixed_token_split, recursive_split
-from ingestion import create_vector_store
+from langchain.embeddings import HuggingFaceInferenceAPIEmbeddings
+from langchain.vectorstores import FAISS
+from ingestion import create_chroma_vector_store, create_faiss_vector_store
 from ragas_evaluate import perform_evaluation
 from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
 from langchain_core.documents.base import Document
 from ragas_evaluate import perform_evaluation
-from retriever import naiveRetriever, multiQueryRetriever
+from retriever import naiveRetriever, multiQueryRetriever, contextualCompressionRetriever, ensembleRetriever
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 
@@ -30,13 +33,20 @@ LLM_MODEL = "gpt35turbo"
 EMBEDDING_MODEL = "ada0021_6"
 
 COHERE_API_KEY = "BWR8YyveaadqsWa8Ty0FM0vEIAysgJgnjhZVkRP1"
+HF_TOKEN = "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"
 
 storage_path = "./vectordb"
 
 LANGCHAIN_TRACING_V2 = "true"
 LANGCHAIN_API_KEY = "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"
 
-embedding_function = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
+#embedding_function = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
+embeddings=HuggingFaceInferenceAPIEmbeddings(
+    api_key=HF_TOKEN,
+    model_name='BAAI/bge-base-en-v1.5'
+)
+
+print(embeddings)
 
 llm = AzureChatOpenAI(
   openai_api_type="azure",
@@ -66,6 +76,7 @@ if __name__ == '__main__':
         if save_path.exists():
             st.success(f'File {uploaded_file.name} is successfully saved!')
 
+    start = time.time()
     # Load document from upload folder
     loader = DirectoryLoader("C:\\Users\\Hammer\\PycharmProjects\\llm_adons\\data\\upload", glob="*.pdf", loader_cls=PyPDFLoader)
     docs = loader.load()
@@ -80,12 +91,16 @@ if __name__ == '__main__':
         chunk_overlap=chunk_overlap
     )
     splits = splitter.split_documents(docs)
+    print(type(splits))
 
-    ## store in vector d chroma
-    vector_store = create_vector_store(splits)
+    ## store in vector chroma/FAISS
+    #vector_store = create_chroma_vector_store(splits)
+    vector_store = create_faiss_vector_store(splits, embeddings=embeddings)
 
-    ## call retrier method
-    retriever = multiQueryRetriever(db_storage_path=storage_path, embedding_function=embedding_function, llm=llm)
+    ## call retriever method
+    #retriever = multiQueryRetriever(db_storage_path=storage_path, embedding_function=embedding_function, llm=llm)
+    ensemble_retriever = ensembleRetriever(documents=splits, db_storage_path=storage_path, embedding_function=embeddings, vectorstore=vector_store)
+    compression_retriever  = contextualCompressionRetriever(db_storage_path=storage_path, embedding_function=embeddings)
 
     system_prompt = (
         "You are an assistant for question-answering tasks. "
@@ -100,17 +115,20 @@ if __name__ == '__main__':
     # Take user question..
     input = st.text_input("Input: ", key="input")
 
-    #prompt = ChatPromptTemplate.from_messages([
-    #    ("system", system_prompt),
-    #    ("user", "{input}")
-    #])
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", system_prompt),
+        ("human", "{input}")
+    ])
 
-    #question_answer_chain = create_stuff_documents_chain(llm, prompt)
-    #rag_chain = create_retrieval_chain(retriever, question_answer_chain)
+    question_answer_chain = create_stuff_documents_chain(llm, prompt)
+    rag_chain = create_retrieval_chain(ensemble_retriever, question_answer_chain)
 
     submit = st.button("Ask the question")
     if submit:
         print("submitted.....")
-        #response = rag_chain.invoke({"input": input})
-        retrieved_docs = retriever.get_relevant_documents(input)
-        st.write(f"\n{'-' * 100}\n".join([f"Document {i + 1}:\n" + d.page_content for i, d in enumerate(retrieved_docs)]))
+        response = rag_chain.invoke({"input": input})
+        #retrieved_docs = retriever.get_relevant_documents(input)
+        st.write(response['answer'])
+
+    stop = time.time()
+    print("Total Time: ", stop - start)
