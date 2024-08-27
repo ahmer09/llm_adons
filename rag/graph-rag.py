@@ -7,22 +7,38 @@ from langchain_community.graphs import Neo4jGraph
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_openai.embeddings import AzureOpenAIEmbeddings
+from langchain_openai.chat_models import AzureChatOpenAI
 from langchain_text_splitters import TokenTextSplitter
 from neo4j.exceptions import ClientError
 from nltk.corpus.reader import documents
+
 load_dotenv()
+AZURE_OPENAI_API_KEY = process.env[]
 
 txt_path = "C:\\Users\\Hammer\\PycharmProjects\\llm_adons\\data\\dune.txt"
 
 graph = Neo4jGraph()
 
 # Embeddings and LLM model
-embeddings = OpenAIEmbeddings()
+LLM_MODEL = "gpt35turbo"
+EMBEDDING_MODEL = "ada0021_6"
+
+embeddings = AzureOpenAIEmbeddings()
 embedding_dimension = 1536
-llm = ChatOpenAI(temperature=0)
+#llm = AzureChatOpenAI(temperature=0)
+
+llm = AzureChatOpenAI(
+  openai_api_type="azure",
+  openai_api_version="2024-02-01",
+  openai_api_key=AZURE_OPENAI_API_KEY,
+  azure_endpoint=AZURE_OPENAI_ENDPOINT,
+  model=LLM_MODEL,
+  temperature=0
+)
 
 # Load text file
-loader = TextLoader(str(txt_path))
+loader = TextLoader(str(txt_path), encoding='utf-8')
 documents = loader.load()
 
 # Ingest Parent-Child node pairs
