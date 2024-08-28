@@ -10,7 +10,9 @@ from langchain_chroma import Chroma
 import pandas as pd
 from ragas.testset.generator import TestsetGenerator
 from ragas.testset.evolutions import simple, reasoning, multi_context
-from commoncode import llm, embedding, rag_chain, vectorstore, retriever
+from commoncode import llm, embedding
+from langchain.schema import AIMessage
+
 
 
 
@@ -112,38 +114,24 @@ def RAGA_withsytheticdata(doc, tests=10):
 
     
 def RAGAS_withoutdata(questions, answers, context, doc):
-    questions = questions[0].strip().lower()
     print("__________________________________EVALUATION BY RAGAS WITH DATA_________________________________________________")
-    eval_questions = [
-        "What are the essential pre-processing steps involved in training Large Language Models (LLMs)?",
-        "How do positional encodings function in transformers, and why are they important for LLMs?",
-        "What are some of the emergent abilities of LLMs that have contributed to their wide adoption?",
-        "What are the main challenges associated with the training and inference of Large Language Models?",
-        "What role does attention play in LLMs, and what are some of the different types of attention used?"
-    ]
 
-    ground_truths = [
-        ["Tokenization is an essential pre-processing step in LLM training, where text is parsed into non-decomposing units called tokens. Common tokenization schemes used in LLMs include WordPiece, Byte Pair Encoding (BPE), and UnigramLM."],
-        ["In transformers, positional encodings are added to token embeddings to provide positional information, which the transformer architecture inherently lacks. This allows the model to capture the order of tokens in a sequence, crucial for understanding the context within the input text. Two common types of positional encodings are Alibi and RoPE."],
-        ["LLMs have demonstrated emergent abilities such as reasoning, planning, decision-making, in-context learning, and answering in zero-shot settings. These abilities are attributed to the large scale of LLMs, even when they are not specifically trained for these attributes."],
-        ["The main challenges associated with LLMs include slow training and inference times, extensive hardware requirements, and higher running costs. These challenges have led to research into more efficient architectures, training strategies, and techniques such as parameter-efficient tuning, pruning, quantization, and knowledge distillation."],
-        ["Attention mechanisms in LLMs assign weights to input tokens based on their importance, allowing the model to focus on relevant parts of the input. Different types of attention include self-attention, cross-attention, sparse attention, and flash attention. These variations optimize the processing of input sequences, especially in handling long text inputs efficiently."]
-    ]
-      
-    # Ensure the asked question is one of the predefined questions
-    selected_ground_truth = None
-    for i, eval_question in enumerate(eval_questions):
-        if questions == eval_question.lower().strip():
-            selected_ground_truth = ground_truths[i]
+    # Generate ground truth using the LLM
+    llm_input = f"Given the context below, generate a response for the question:\nQuestion: {questions}\nContext: {context}\nGenerate a response."
+
+    #llm_input = f"Question: {questions}\nContext: {context}\nAnswer: {answers}"
     
-    selected_ground_truth = str(selected_ground_truth)
+    ground_truth_response = llm.invoke(llm_input)
 
-    # Prepare data for evaluation
+    ground_truth = ground_truth_response.content if isinstance(ground_truth_response, AIMessage) else str(ground_truth_response)
+
+    context_str = str(context)  # Ensure context is a string
+
     data = {
         "question": [questions],
         "answer": [answers],
-        "contexts": [context],
-        "ground_truth": [selected_ground_truth]
+        "contexts": [[context_str]],
+        "ground_truth": [ground_truth]
     }
 
     
@@ -159,12 +147,6 @@ def RAGAS_withoutdata(questions, answers, context, doc):
             embeddings=embedding
         )
 
-    #loop = asyncio.new_event_loop()
-    #asyncio.set_event_loop(loop)
-    """loop = asyncio.get_event_loop()
-    result = loop.run_until_complete(async_evaluate())
-    loop.close()"""
-
     try:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -176,11 +158,13 @@ def RAGAS_withoutdata(questions, answers, context, doc):
         df = result.to_pandas()
         df.to_excel('./raga_output.xlsx', index=False, engine='openpyxl')
         print(df)
+        return df
 
     else:
         print("Evaluate returned None")
-
+        return None
     
+
     
 
 

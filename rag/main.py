@@ -16,13 +16,12 @@ from chunking import fixed_token_split, recursive_split
 from langchain.embeddings import HuggingFaceInferenceAPIEmbeddings
 from langchain.vectorstores import FAISS
 from ingestion import create_chroma_vector_store, create_faiss_vector_store
-from ragas_evaluate import perform_evaluation
 from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
 from langchain_core.documents.base import Document
-from ragas_evaluate import perform_evaluation
 from retriever import naiveRetriever, multiQueryRetriever, contextualCompressionRetriever, ensembleRetriever
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
+from evaluation import RAGAS_withoutdata
 
 # Azure OpenAI credentials
 AZURE_OPENAI_ENDPOINT = "https://azureopenai16.openai.azure.com/"
@@ -68,7 +67,7 @@ if __name__ == '__main__':
     uploaded_file = st.file_uploader("Upload a file")
 
     if uploaded_file is not None:
-        save_folder = 'C:\\Users\\Hammer\\PycharmProjects\\llm_adons\\data\\upload'
+        save_folder = 'C:\\Users\\Apnavi\\Desktop\\Code\\llm_adons\\data\\upload'
         save_path = Path(save_folder, uploaded_file.name)
         with open(save_path, mode='wb') as w:
             w.write(uploaded_file.getvalue())
@@ -78,57 +77,80 @@ if __name__ == '__main__':
 
     start = time.time()
     # Load document from upload folder
-    loader = DirectoryLoader("C:\\Users\\Hammer\\PycharmProjects\\llm_adons\\data\\upload", glob="*.pdf", loader_cls=PyPDFLoader)
+    loader = DirectoryLoader("C:\\Users\\Apnavi\\Desktop\\Code\\llm_adons\\data\\upload", glob="*.pdf", loader_cls=PyPDFLoader)
     docs = loader.load()
     print('.....document_loaded.....')
 
-    ## set chunk size
-    chunk_size = 1000
-    chunk_overlap = int(0.15*chunk_size)
+    st.session_state['docs'] = docs
 
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap
-    )
-    splits = splitter.split_documents(docs)
-    print(type(splits))
+    if 'docs' in st.session_state:
 
-    ## store in vector chroma/FAISS
-    #vector_store = create_chroma_vector_store(splits)
-    vector_store = create_faiss_vector_store(splits, embeddings=embeddings)
+        ## set chunk size
+        chunk_size = 1000
+        chunk_overlap = int(0.15*chunk_size)
 
-    ## call retriever method
-    #retriever = multiQueryRetriever(db_storage_path=storage_path, embedding_function=embedding_function, llm=llm)
-    ensemble_retriever = ensembleRetriever(documents=splits, db_storage_path=storage_path, embedding_function=embeddings, vectorstore=vector_store)
-    compression_retriever  = contextualCompressionRetriever(db_storage_path=storage_path, embedding_function=embeddings)
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap
+        )
+        splits = splitter.split_documents(docs)
+        print(type(splits))
 
-    system_prompt = (
-        "You are an assistant for question-answering tasks. "
-        "Use the following pieces of retrieved context to answer "
-        "the question. If you don't know the answer, say that you "
-        "don't know. Use three sentences maximum and keep the "
-        "answer concise."
-        "\n\n"
-        "{context}"
-    )
+        ## store in vector chroma/FAISS
+        #vector_store = create_chroma_vector_store(splits)
+        vector_store = create_chroma_vector_store(splits)
 
-    # Take user question..
-    input = st.text_input("Input: ", key="input")
+        ## call retriever method
+        #retriever = multiQueryRetriever(db_storage_path=storage_path, embedding_function=embedding_function, llm=llm)
+        ensemble_retriever = ensembleRetriever(documents=splits, db_storage_path=storage_path, embedding_function=embeddings, vectorstore=vector_store)
+        #compression_retriever  = contextualCompressionRetriever(db_storage_path=storage_path, embedding_function=embeddings)
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        ("human", "{input}")
-    ])
+        system_prompt = (
+            "You are an assistant for question-answering tasks. "
+            "Use the following pieces of retrieved context to answer "
+            "the question. If you don't know the answer, say that you "
+            "don't know. Use three sentences maximum and keep the "
+            "answer concise."
+            "\n\n"
+            "{context}"
+        )
 
-    question_answer_chain = create_stuff_documents_chain(llm, prompt)
-    rag_chain = create_retrieval_chain(ensemble_retriever, question_answer_chain)
+        # Take user question..
+        input = st.text_input("Input: ", key="input")
 
-    submit = st.button("Ask the question")
-    if submit:
-        print("submitted.....")
-        response = rag_chain.invoke({"input": input})
-        #retrieved_docs = retriever.get_relevant_documents(input)
-        st.write(response['answer'])
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("human", "{input}")
+        ])
 
-    stop = time.time()
-    print("Total Time: ", stop - start)
+        question_answer_chain = create_stuff_documents_chain(llm, prompt)
+        rag_chain = create_retrieval_chain(ensemble_retriever, question_answer_chain)
+        contexts = []
+        submit = st.button("Ask the question")
+        if submit:
+            print("submitted.....")
+            response = rag_chain.invoke({"input": input})
+            input_value = response['input']
+            question_rag = input_value
+            print(question_rag)
+
+            # Extracting context
+            contexts = response.get('context')
+            
+
+            
+            answer = response.get('answer')
+            
+            answer = str(answer)
+            
+            st.write(response['answer'])
+
+            evaluation_df = RAGAS_withoutdata(question_rag, answer, contexts, docs)
+            if evaluation_df is not None:
+                st.write("Evaluation Results:")
+                st.dataframe(evaluation_df) 
+            else:
+                st.write("No evaluation results to display.")
+
+        stop = time.time()
+        print("Total Time: ", stop - start)
