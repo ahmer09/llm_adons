@@ -33,7 +33,7 @@ embedding_function = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2"
 #)
 
 
-def create_chroma_vector_store(docs):
+def create_chroma_vector_store(docs, embedding_function):
     """
     creates chroma vector store
     :param docs: list of documents
@@ -62,11 +62,8 @@ def create_faiss_vector_store(docs, embeddings):
         "metadata": doc.metadata  # Adjust based on actual attributes of the Document class
     } for doc in docs]
 
-    print(serialized_docs)
-
     # Generate embeddings for the serialized documents
     embedding_results = embeddings.embed_documents([doc["text"] for doc in serialized_docs])
-    print(embedding_results)
     embeddings_matrix = np.array(embedding_results) 
 
     print(embeddings_matrix)
@@ -82,8 +79,6 @@ def create_faiss_vector_store(docs, embeddings):
 
     # Add embeddings to the FAISS index
     index.add(embeddings_matrix)
-
-    
 
     #index = faiss.IndexFlatL2(len(embeddings.embed_query(docs)))
 

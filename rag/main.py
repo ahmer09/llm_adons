@@ -2,18 +2,14 @@ import os
 import time
 from pathlib import Path
 import streamlit as st
+from langchain.storage import LocalFileStore
 from langchain_core.prompts import ChatPromptTemplate
-from werkzeug.utils import secure_filename
-import chromadb
-from langchain_chroma import Chroma
-from datasets import load_dataset
-from langchain_community.embeddings import SentenceTransformerEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+import configparser
 from langchain_openai.embeddings import AzureOpenAIEmbeddings
 from langchain_openai.chat_models import AzureChatOpenAI
 from tqdm import tqdm
-from chunking import fixed_token_split, recursive_split
-from langchain.embeddings import HuggingFaceInferenceAPIEmbeddings
+from chunking import fixed_token_split, recursive_split, semantic_split
+from langchain.embeddings import HuggingFaceInferenceAPIEmbeddings, CacheBackedEmbeddings
 from langchain.vectorstores import FAISS
 from ingestion import create_chroma_vector_store, create_faiss_vector_store
 from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
@@ -23,52 +19,84 @@ from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from evaluation import RAGAS_withoutdata
 
+# Read configuration file
+config = configparser.ConfigParser()
+config.read('config.ini')
+
 # Azure OpenAI credentials
-AZURE_OPENAI_ENDPOINT = "https://azureopenai16.openai.azure.com/"
-AZURE_OPENAI_API_KEY = "75db73a3b9da40b0b6e0e98273a6029f"
-AZURE_OPENAI_API_VERSION = "2024-02-01"
+AZURE_OPENAI_ENDPOINT = os.getenv('AZURE_OPENAI_ENDPOINT')
+AZURE_OPENAI_API_KEY = os.getenv('AZURE_OPENAI_API_KEY')
+AZURE_OPENAI_API_VERSION = os.getenv('AZURE_OPENAI_API_VERSION')
+
 
 LLM_MODEL = "gpt35turbo"
 EMBEDDING_MODEL = "ada0021_6"
 
-COHERE_API_KEY = "BWR8YyveaadqsWa8Ty0FM0vEIAysgJgnjhZVkRP1"
-HF_TOKEN = "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"
+COHERE_API_KEY = os.getenv('COHERE_API_KEY')
+HF_TOKEN = os.getenv('HF_TOKEN')
 
-storage_path = "./vectordb"
+#storage_path = config.get(section='database', option='storage_path')
+#upload_path = config.get(section='database', option='upload_path')
+storage_path = './vectordb'
+upload_path = 'C:\\Users\\Hammer\\PycharmProjects\\llm_adons\\data\\upload'
 
 LANGCHAIN_TRACING_V2 = "true"
-LANGCHAIN_API_KEY = "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"
+LANGCHAIN_API_KEY = os.getenv('LANGCHAIN_API_KEY')
 
 #embedding_function = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
-embeddings=HuggingFaceInferenceAPIEmbeddings(
-    api_key=HF_TOKEN,
-    model_name='BAAI/bge-base-en-v1.5'
+#embeddings=HuggingFaceInferenceAPIEmbeddings(
+#    api_key=HF_TOKEN,
+#    model_name='BAAI/bge-base-en-v1.5'
+#)
+embeddings = AzureOpenAIEmbeddings(
+    openai_api_type="azure",
+    openai_api_version="2024-02-01",
+    openai_api_key=AZURE_OPENAI_API_KEY,
+    azure_endpoint=AZURE_OPENAI_ENDPOINT,
+    model=EMBEDDING_MODEL,
+    allowed_special={'<|endoftext|>'}
 )
 
-print(embeddings)
+# Create caching store for embeddings
+store = LocalFileStore("./cache/")
+cached_embeddings = CacheBackedEmbeddings.from_bytes_store(
+    embeddings, store, namespace=embeddings.model
+)
 
 llm = AzureChatOpenAI(
   openai_api_type="azure",
-  openai_api_version="2024-02-01",
+  openai_api_version=AZURE_OPENAI_API_VERSION,
   openai_api_key=AZURE_OPENAI_API_KEY,
   azure_endpoint=AZURE_OPENAI_ENDPOINT,
   model=LLM_MODEL,
   temperature=0
 )
 
+chunking_options = ["fixed_token_split", "recursive_split", "semantic_split"]
+ingestion_options = ["create_chroma_vector_store", "create_faiss_vector_store"]
+retriever_options = ["naiveRetriever", "multiQueryRetriever", "contextualCompressionRetriever", "ensembleRetriever"]
+
+splits=[]
 
 if __name__ == '__main__':
 
     # driver code
     st.set_page_config(page_title="RAG Uploader")
+    with st.sidebar:
+        text1 = st.sidebar.text("Choose a configuration:")
+        chunk_option = st.sidebar.selectbox(label='Chunking option:', options = chunking_options)
+        ingest_option = st.sidebar.selectbox(label='Ingestion option:', options = ingestion_options)
+        retrieve_option = st.sidebar.selectbox(label='Retriever option:', options = retriever_options)
     st.header("Upload pdf file to ask questions from.")
+    prompt = st.chat_input("Say something")
+    if prompt:
+        st.write(f"User has sent the following prompt: {prompt}")
 
     # Get the file from file uploader
     uploaded_file = st.file_uploader("Upload a file")
 
     if uploaded_file is not None:
-        save_folder = 'C:\\Users\\Apnavi\\Desktop\\Code\\llm_adons\\data\\upload'
-        save_path = Path(save_folder, uploaded_file.name)
+        save_path = Path(upload_path, uploaded_file.name)
         with open(save_path, mode='wb') as w:
             w.write(uploaded_file.getvalue())
 
@@ -77,33 +105,40 @@ if __name__ == '__main__':
 
     start = time.time()
     # Load document from upload folder
-    loader = DirectoryLoader("C:\\Users\\Apnavi\\Desktop\\Code\\llm_adons\\data\\upload", glob="*.pdf", loader_cls=PyPDFLoader)
+    loader = DirectoryLoader(upload_path, glob="*.pdf", loader_cls=PyPDFLoader)
     docs = loader.load()
     print('.....document_loaded.....')
 
     st.session_state['docs'] = docs
 
     if 'docs' in st.session_state:
-
         ## set chunk size
         chunk_size = 1000
         chunk_overlap = int(0.15*chunk_size)
 
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap
-        )
-        splits = splitter.split_documents(docs)
-        print(type(splits))
+        if chunk_option == "fixed_token_split":
+            splits = fixed_token_split(docs, chunk_size, chunk_overlap)
+        elif chunk_option == "recursive_split":
+            splits = recursive_split(docs, chunk_size, chunk_overlap)
+        elif chunk_option == "semantic_split":
+            splits = semantic_split(docs)
 
-        ## store in vector chroma/FAISS
-        #vector_store = create_chroma_vector_store(splits)
-        vector_store = create_chroma_vector_store(splits)
+
+        ## Ingest in vector chroma/FAISS
+        if ingest_option == "create_chroma_vector_store":
+            vector_store = create_chroma_vector_store(splits, cached_embeddings)
+        else:
+            vector_store = create_faiss_vector_store(splits, embeddings)
 
         ## call retriever method
-        #retriever = multiQueryRetriever(db_storage_path=storage_path, embedding_function=embedding_function, llm=llm)
-        ensemble_retriever = ensembleRetriever(documents=splits, db_storage_path=storage_path, embedding_function=embeddings, vectorstore=vector_store)
-        #compression_retriever  = contextualCompressionRetriever(db_storage_path=storage_path, embedding_function=embeddings)
+        if retrieve_option == "naiveRetriever":
+            retriever = naiveRetriever(vector_store)
+        elif retrieve_option == "multiQueryRetriever":
+            retriever = multiQueryRetriever(db_storage_path=storage_path, embedding_function=cached_embeddings, llm=llm)
+        elif retrieve_option == "contextualCompressionRetriever":
+            retriever = contextualCompressionRetriever(db_storage_path=storage_path, embedding_function=cached_embeddings)
+        elif retrieve_option == "ensembleRetriever":
+            retriever = ensembleRetriever(documents=splits, db_storage_path=storage_path, embedding_function=cached_embeddings, vectorstore=vector_store)
 
         system_prompt = (
             "You are an assistant for question-answering tasks. "
@@ -124,7 +159,7 @@ if __name__ == '__main__':
         ])
 
         question_answer_chain = create_stuff_documents_chain(llm, prompt)
-        rag_chain = create_retrieval_chain(ensemble_retriever, question_answer_chain)
+        rag_chain = create_retrieval_chain(retriever, question_answer_chain)
         contexts = []
         submit = st.button("Ask the question")
         if submit:
@@ -136,11 +171,7 @@ if __name__ == '__main__':
 
             # Extracting context
             contexts = response.get('context')
-            
-
-            
             answer = response.get('answer')
-            
             answer = str(answer)
             
             st.write(response['answer'])

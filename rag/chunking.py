@@ -56,9 +56,7 @@ def recursive_split(docs, chunk_size: int, chunk_overlap: int):
 
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        length_function=len,
-        add_start_index=True
+        chunk_overlap=chunk_overlap
 
     )
     return splitter.split_documents(docs)
