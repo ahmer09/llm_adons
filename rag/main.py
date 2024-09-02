@@ -48,33 +48,17 @@ LANGCHAIN_API_KEY = os.getenv('LANGCHAIN_API_KEY')
 #    api_key=HF_TOKEN,
 #    model_name='BAAI/bge-base-en-v1.5'
 #)
-embeddings = AzureOpenAIEmbeddings(
-    openai_api_type="azure",
-    openai_api_version="2024-02-01",
-    openai_api_key=AZURE_OPENAI_API_KEY,
-    azure_endpoint=AZURE_OPENAI_ENDPOINT,
-    model=EMBEDDING_MODEL,
-    allowed_special={'<|endoftext|>'}
-)
+
 
 # Create caching store for embeddings
 store = LocalFileStore("./cache/")
-cached_embeddings = CacheBackedEmbeddings.from_bytes_store(
-    embeddings, store, namespace=embeddings.model
-)
 
-llm = AzureChatOpenAI(
-  openai_api_type="azure",
-  openai_api_version=AZURE_OPENAI_API_VERSION,
-  openai_api_key=AZURE_OPENAI_API_KEY,
-  azure_endpoint=AZURE_OPENAI_ENDPOINT,
-  model=LLM_MODEL,
-  temperature=0
-)
 
 chunking_options = ["fixed_token_split", "recursive_split", "semantic_split"]
 ingestion_options = ["create_chroma_vector_store", "create_faiss_vector_store"]
 retriever_options = ["naiveRetriever", "multiQueryRetriever", "contextualCompressionRetriever", "ensembleRetriever"]
+llm_options = ["gpt35turbo", "gpt4"]
+embedding_option = ["ada0021_6", "BAAI/bge-base-en-1.5", "ModelOps-text-embedding-3-large", "text-embedding-3-small"]
 
 splits=[]
 
@@ -87,6 +71,8 @@ if __name__ == '__main__':
         chunk_option = st.sidebar.selectbox(label='Chunking option:', options = chunking_options)
         ingest_option = st.sidebar.selectbox(label='Ingestion option:', options = ingestion_options)
         retrieve_option = st.sidebar.selectbox(label='Retriever option:', options = retriever_options)
+        llm_option = st.sidebar.selectbox(label='LLM option:', options = llm_options)
+        embedding_option = st.sidebar.selectbox(label='Embedding option:', options = embedding_option)
     st.header("Upload pdf file to ask questions from.")
     prompt = st.chat_input("Say something")
     if prompt:
@@ -102,6 +88,41 @@ if __name__ == '__main__':
 
         if save_path.exists():
             st.success(f'File {uploaded_file.name} is successfully saved!')
+
+    if llm_option == "gpt35turbo":
+        LLM_MODEL = "gpt35turbo"
+    elif llm_option == "gpt4":
+        LLM_MODEL = "gpt4"
+
+    llm = AzureChatOpenAI(
+        openai_api_type="azure",
+        openai_api_version=AZURE_OPENAI_API_VERSION,
+        openai_api_key=AZURE_OPENAI_API_KEY,
+        azure_endpoint=AZURE_OPENAI_ENDPOINT,
+        model=LLM_MODEL,
+        temperature=0
+    )
+
+    if embedding_option == "ada0021_6":
+        EMBEDDING_MODEL = "ada0021_6"
+    elif embedding_option == "BAAI/bge-base-en-1.5":
+        EMBEDDING_MODEL = "BAAI/bge-base-en-1.5"
+    elif embedding_option == "ModelOps-text-embedding-3-large":
+        EMBEDDING_MODEL = "ModelOps-text-embedding-3-large"
+    elif embedding_option == "text-embedding-3-small":
+        EMBEDDING_MODEL = "ModelOps-text-embedding-3-small"
+
+    embeddings = AzureOpenAIEmbeddings(
+        openai_api_type="azure",
+        openai_api_version="2024-02-01",
+        openai_api_key=AZURE_OPENAI_API_KEY,
+        azure_endpoint=AZURE_OPENAI_ENDPOINT,
+        model=EMBEDDING_MODEL,
+        allowed_special={'<|endoftext|>'}
+    )
+    cached_embeddings = CacheBackedEmbeddings.from_bytes_store(
+        embeddings, store, namespace=embeddings.model
+    )
 
     start = time.time()
     # Load document from upload folder
