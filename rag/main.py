@@ -18,6 +18,11 @@ from retriever import naiveRetriever, multiQueryRetriever, contextualCompression
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from evaluation import RAGAS_withoutdata
+from metadata import metadata_formatter
+from langchain_community.embeddings import SentenceTransformerEmbeddings
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from embedding import embedding_azureopenai, embedding_azureopenai_new, embedding_azureopenai_small
+
 
 # Read configuration file
 config = configparser.ConfigParser()
@@ -38,7 +43,7 @@ HF_TOKEN = os.getenv('HF_TOKEN')
 #storage_path = config.get(section='database', option='storage_path')
 #upload_path = config.get(section='database', option='upload_path')
 storage_path = './vectordb'
-upload_path = 'C:\\Users\\Hammer\\PycharmProjects\\llm_adons\\data\\upload'
+upload_path = 'C:\\Users\\Apnavi\\Desktop\\Code\\New clone\\llm_adons\\data\\upload'
 
 LANGCHAIN_TRACING_V2 = "true"
 LANGCHAIN_API_KEY = os.getenv('LANGCHAIN_API_KEY')
@@ -51,19 +56,18 @@ LANGCHAIN_API_KEY = os.getenv('LANGCHAIN_API_KEY')
 
 
 # Create caching store for embeddings
-store = LocalFileStore("./cache/")
+#store = LocalFileStore("./cache/")
 
 
 chunking_options = ["fixed_token_split", "recursive_split", "semantic_split"]
 ingestion_options = ["create_chroma_vector_store", "create_faiss_vector_store"]
-retriever_options = ["naiveRetriever", "multiQueryRetriever", "contextualCompressionRetriever", "ensembleRetriever"]
+retriever_options = ["ensembleRetriever","naiveRetriever", "multiQueryRetriever", "contextualCompressionRetriever"]
 llm_options = ["gpt35turbo", "gpt4"]
-embedding_option = ["ada0021_6", "BAAI/bge-base-en-1.5", "ModelOps-text-embedding-3-large", "text-embedding-3-small"]
+embedding_option = ["ada0021_6","SentenceTransformer", "BAAI/bge-base-en-1.5", "ModelOps-text-embedding-3-large", "text-embedding-3-small"]
 
 splits=[]
 
 if __name__ == '__main__':
-
     # driver code
     st.set_page_config(page_title="RAG Uploader")
     with st.sidebar:
@@ -103,31 +107,27 @@ if __name__ == '__main__':
         temperature=0
     )
 
+    if embedding_option == "SentenceTransformer":
+        embedding_function = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
     if embedding_option == "ada0021_6":
-        EMBEDDING_MODEL = "ada0021_6"
+        embedding_function = embedding_azureopenai()
     elif embedding_option == "BAAI/bge-base-en-1.5":
         EMBEDDING_MODEL = "BAAI/bge-base-en-1.5"
     elif embedding_option == "ModelOps-text-embedding-3-large":
-        EMBEDDING_MODEL = "ModelOps-text-embedding-3-large"
+        embedding_function = embedding_azureopenai_new()
     elif embedding_option == "text-embedding-3-small":
-        EMBEDDING_MODEL = "ModelOps-text-embedding-3-small"
+        embedding_function = embedding_azureopenai_small()
 
-    embeddings = AzureOpenAIEmbeddings(
-        openai_api_type="azure",
-        openai_api_version="2024-02-01",
-        openai_api_key=AZURE_OPENAI_API_KEY,
-        azure_endpoint=AZURE_OPENAI_ENDPOINT,
-        model=EMBEDDING_MODEL,
-        allowed_special={'<|endoftext|>'}
-    )
-    cached_embeddings = CacheBackedEmbeddings.from_bytes_store(
-        embeddings, store, namespace=embeddings.model
-    )
 
     start = time.time()
     # Load document from upload folder
     loader = DirectoryLoader(upload_path, glob="*.pdf", loader_cls=PyPDFLoader)
     docs = loader.load()
+    print(retrieve_option)
+    #print(embedding_option)
+    print(llm_option)
+    print(ingest_option)
+    print(chunk_option)
     print('.....document_loaded.....')
 
     st.session_state['docs'] = docs
@@ -147,19 +147,20 @@ if __name__ == '__main__':
 
         ## Ingest in vector chroma/FAISS
         if ingest_option == "create_chroma_vector_store":
-            vector_store = create_chroma_vector_store(splits, cached_embeddings)
+            vector_store = create_chroma_vector_store(splits)
         else:
-            vector_store = create_faiss_vector_store(splits, embeddings)
+            vector_store = create_faiss_vector_store(splits, embedding_function)
+       
 
         ## call retriever method
         if retrieve_option == "naiveRetriever":
             retriever = naiveRetriever(vector_store)
         elif retrieve_option == "multiQueryRetriever":
-            retriever = multiQueryRetriever(db_storage_path=storage_path, embedding_function=cached_embeddings, llm=llm)
+            retriever = multiQueryRetriever(db_storage_path=storage_path, embedding_function=embeddings, llm=llm)
         elif retrieve_option == "contextualCompressionRetriever":
-            retriever = contextualCompressionRetriever(db_storage_path=storage_path, embedding_function=cached_embeddings)
+            retriever = contextualCompressionRetriever(db_storage_path=storage_path, embedding_function=embeddings)
         elif retrieve_option == "ensembleRetriever":
-            retriever = ensembleRetriever(documents=splits, db_storage_path=storage_path, embedding_function=cached_embeddings, vectorstore=vector_store)
+            retriever = ensembleRetriever(documents=splits, db_storage_path=storage_path, embedding_function=embedding_function, vectorstore=vector_store)
 
         system_prompt = (
             "You are an assistant for question-answering tasks. "
@@ -203,6 +204,19 @@ if __name__ == '__main__':
                 st.dataframe(evaluation_df) 
             else:
                 st.write("No evaluation results to display.")
+
+        # Generate Metadata Button
+        if st.button("Generate Metadata"):
+            info = rag_chain.invoke({"input": input})
+            print(info)
+            document_info = info.get('context')
+            user_queries = [input]  
+            metadata = metadata_formatter(document_info, user_queries)
+            if metadata:
+                st.write("Generated Metadata from Response Context:")
+                st.json(metadata)
+        else:
+            st.write("Please provide an input")
 
         stop = time.time()
         print("Total Time: ", stop - start)

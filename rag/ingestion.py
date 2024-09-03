@@ -33,7 +33,7 @@ embedding_function = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2"
 #)
 
 
-def create_chroma_vector_store(docs, embedding_function):
+def create_chroma_vector_store(docs):
     """
     creates chroma vector store
     :param docs: list of documents
