@@ -73,9 +73,10 @@ def metadata_formatter(document_info, user_queries):
     try:
         response = llm.invoke(main_prompt)
         metadata_suggestion = response.content
-
-        st.write("Metadata Suggestion:")
-        st.json(metadata_suggestion)  # Directly show the metadata suggestion
+        metadata_json = json.loads(metadata_suggestion)
+        return metadata_json
+        #st.write("Metadata Suggestion:")
+        #st.json(metadata_suggestion)  # Directly show the metadata suggestion
 
     except Exception as e:
         st.error(f"An error occurred: {e}")
