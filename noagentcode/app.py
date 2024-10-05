@@ -357,7 +357,7 @@ def raguploader():
         metadata = generate_metadata(docs, input)
         print(metadata)  
         return metadata
-    return jsonify({
+return jsonify({
         "message": "Processing complete"
     }), 200   
 
